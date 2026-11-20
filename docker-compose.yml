@@ -1,0 +1,35 @@
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: trainiq
+      POSTGRES_PASSWORD: trainiq
+      POSTGRES_DB: trainiq
+    volumes: [db:/var/lib/postgresql/data]
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "trainiq"]
+      interval: 3s
+      retries: 20
+
+  ml:
+    build: packages/ml
+    volumes: [models:/data]
+
+  backend:
+    build: { context: ., dockerfile: packages/backend/Dockerfile }
+    environment:
+      DATABASE_URL: postgres://trainiq:trainiq@db:5432/trainiq
+      ML_URL: http://ml:8001
+      JWT_SECRET: ${JWT_SECRET:-change-me-in-production}
+    depends_on:
+      db: { condition: service_healthy }
+      ml: { condition: service_started }
+
+  web:
+    build: { context: ., dockerfile: packages/frontend/Dockerfile }
+    ports: ["${PORT:-8080}:80"]
+    depends_on: [backend]
+
+volumes:
+  db:
+  models:

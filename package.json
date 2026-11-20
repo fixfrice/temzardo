@@ -1,0 +1,14 @@
+{
+  "name": "trainiq",
+  "private": true,
+  "license": "MIT",
+  "workspaces": ["packages/*"],
+  "scripts": {
+    "dev:backend": "yarn workspace @trainiq/backend dev",
+    "dev:frontend": "yarn workspace @trainiq/frontend dev",
+    "migrate": "yarn workspace @trainiq/backend migrate",
+    "seed": "yarn workspace @trainiq/backend seed",
+    "typecheck": "yarn workspaces run typecheck",
+    "test": "yarn workspace @trainiq/backend test"
+  }
+}

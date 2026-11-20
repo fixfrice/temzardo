@@ -1,0 +1,87 @@
+{
+  "nav": {
+    "plans": "Plans",
+    "progress": "Progress",
+    "logout": "Log out"
+  },
+  "login": {
+    "tagline": "Plan your workouts — the model predicts what you'll actually do.",
+    "signIn": "Sign in",
+    "signUp": "Sign up",
+    "name": "Name",
+    "password": "Password"
+  },
+  "units": {
+    "kg": "kg"
+  },
+  "exercise": {
+    "squat": "Squat",
+    "bench": "Bench press",
+    "deadlift": "Deadlift",
+    "row": "Barbell row",
+    "ohp": "Overhead press",
+    "pullup": "Pull-up"
+  },
+  "plans": {
+    "new": "New plan",
+    "retrain": "Retrain model",
+    "empty": "No plans yet. After 3–4 workouts the forecast becomes personal.",
+    "done": "done",
+    "trained": "Model trained on {{rows}} sets ({{mine}} real)"
+  },
+  "editor": {
+    "defaultTitle": "Workout",
+    "title": "Title",
+    "when": "When",
+    "sets": "Sets",
+    "reps": "Reps",
+    "weight": "Weight, kg",
+    "rest": "Rest",
+    "suggest": "Suggest weight (ML)",
+    "noHistory": "No history for this exercise yet — log one workout first",
+    "hint": "Model: {{weight}} kg → reps {{reps}}",
+    "addExercise": "Add exercise",
+    "estimate": "Planned ≈ {{time}}",
+    "save": "Save plan"
+  },
+  "plan": {
+    "notPersonal": "forecast not personalised yet",
+    "start": "Start workout",
+    "delete": "Delete",
+    "deleteConfirm": "Delete this plan?",
+    "repsPlan": "Reps · plan",
+    "repsForecast": "Reps · forecast",
+    "repsActual": "Reps · actual",
+    "timePlan": "Time · plan",
+    "timeForecast": "Time · forecast",
+    "timeActual": "Time · actual",
+    "completion": "Completion",
+    "volume": "Volume",
+    "accuracy": "Forecast was off by {{forecast}} reps per set on average; the plan by {{plan}}.",
+    "chart": "Reps per set",
+    "legendPlan": "Plan",
+    "legendForecast": "Forecast",
+    "legendActual": "Actual",
+    "exercise": "Set",
+    "restPlan": "Rest · plan",
+    "restForecast": "Rest · forecast",
+    "restActual": "Rest · actual"
+  },
+  "workout": {
+    "rest": "Rest",
+    "overtime": "Rest ran over — the model will learn from it",
+    "restPlan": "Plan: {{time}}",
+    "howMany": "What you did",
+    "finish": "Finish workout",
+    "setDone": "Set done",
+    "startSet": "Start set"
+  },
+  "progress": {
+    "empty": "No workouts with this exercise yet.",
+    "e1rm": "Estimated 1RM (e1RM), kg",
+    "projected": "forecast",
+    "explain": "e1RM = weight × (1 + reps / 30). Dashed line is the model's projection for the next workout.",
+    "next": "Recommendation for {{sets}}×{{reps}}",
+    "expected": "Expected reps"
+  }
+}

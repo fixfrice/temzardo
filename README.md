@@ -1,73 +1,109 @@
 # TrainIQ
 
-Приложение для тренировок. Ты планируешь подходы, повторы, вес и отдых. Модель прогнозирует, сколько ты **на самом деле** сделаешь и сколько это займёт времени. После тренировки план, прогноз и факт сравниваются, и модель подстраивается под конкретного человека.
+**A workout planner that learns how *you* actually train.**
 
-```
-mobile/   Expo (SDK 58) + Expo Router — планы, режим тренировки с таймером, отчёты, прогресс
-server/   FastAPI + SQLAlchemy + scikit-learn — API, хранение, ML
-  trainiq/ml/         ML-ядро (общее для API и прототипа)
-  notebooks/          прототип с оценкой модели (# %% ячейки, открывается в VS Code/Jupyter)
-```
+You plan sets, reps, weight and rest. TrainIQ predicts what you will really do: how many reps per set, how long you'll rest, how long the session takes. After the workout it puts plan, forecast and reality side by side. Every logged workout makes the forecast more personal.
 
-## Запуск
+[Русская версия](README.ru.md)
+
+![Plan vs forecast vs actual](docs/report.png)
+
+## Features
+
+- Plan workouts: exercises, sets, reps, weight, rest
+- Guided workout mode with a rest timer that records your *real* rest and set duration
+- Personalised forecast of reps, rest and total time for every planned set
+- Plan / forecast / actual report, with a score for how accurate the forecast was
+- "Suggest weight": the heaviest weight at which the model expects you to complete every set
+- Estimated 1RM progress chart with a projection
+- Russian and English UI, self-hosted, MIT licensed
+
+## Quick start
 
 ```bash
-cd server
-pip install -e ".[dev]"
-python -m trainiq.seed          # демо-пользователь, 6 недель истории, обучение модели
-uvicorn trainiq.api:app --reload --host 0.0.0.0
-pytest                          # 5 тестов: ML + полный цикл API
+git clone https://github.com/<you>/trainiq && cd trainiq
+cp .env.example .env
+docker compose up --build
 ```
 
-```bash
-cd mobile
-npm install
-EXPO_PUBLIC_API_URL=http://<IP-компьютера>:8000 npx expo start
+Open http://localhost:8080 and sign up.
+
+## Architecture
+
+```
+packages/
+  frontend/  React + Vite + Ant Design + Tailwind + recharts + i18next
+  backend/   Node + Express + TypeScript + Sequelize + PostgreSQL
+  ml/        Python + FastAPI + scikit-learn
 ```
 
-С телефона `localhost` указывает на сам телефон, поэтому нужен IP компьютера в локальной сети. Документация API: `http://localhost:8000/docs`.
+```
+browser ──► frontend (nginx) ──/api──► backend ──► PostgreSQL
+                                          │
+                                          └─ history + plan ──► ml ──► forecast
+```
 
-## Как устроен прогноз
+The **ML service is stateless**. The backend owns all data and sends the user's history along with each request. The only state the ML service keeps is the trained model file. That makes it easy to scale, replace or reuse with a different backend.
 
-**Что предсказываем.** Для каждого запланированного подхода модель даёт три числа: сколько повторов будет сделано, сколько продлится отдых и сколько займёт сам подход. Сумма даёт прогноз длительности всей тренировки.
+## How the model works
 
-**Повторы: глобальная модель + профиль пользователя + персональная поправка.**
+**Target:** the number of reps you'll do in each planned set.
 
-1. `HistGradientBoostingRegressor` учится на подходах всех пользователей. Ключевые признаки (`ml/features.py`):
-   - `rel_intensity`: вес / твой расчётный максимум (e1RM по Эпли) за последние 3 тренировки. Одна шкала для новичка и для мастера спорта.
-   - `set_index`, `rest_before_sec`, `days_since_last`, `experience`.
-   - **Профиль**: `user_drop` (сколько повторов ты обычно теряешь от подхода к подходу) и `user_completion` (какую долю плана обычно выполняешь). Это экспоненциальное среднее по прошлым тренировкам. Так модель учит взаимодействия вида «быстро устающий человек на 4-м подходе», а не просто сдвиг.
-2. Поверх этого идёт поправка-смещение с частичным объединением (empirical Bayes): `bias = sum(ошибок) / (n + K)`. Пока данных мало, поправка около нуля; когда данных много, она равна твоей реальной средней ошибке.
+1. **One global model** (`HistGradientBoostingRegressor`) learns how people in general respond to load. Its features:
+   - relative intensity: weight ÷ your recent estimated 1RM
+   - set number, rest before the set, days since the last session, experience
+2. **User profile features** turn the global model into a personal one: how many reps *you* usually lose from set to set, and what share of the plan *you* usually complete. They are exponentially weighted averages over your past sessions, so the model learns interactions like "fast-fatiguing lifter on set 4" instead of a flat offset.
+3. **A shrunk personal bias** adds `Σ residuals / (n + K)` on top. It is near zero for new users and approaches their true average error as data accumulates (empirical-Bayes partial pooling).
+4. **Rest and tempo** are per-user ratios pooled toward the population. Rest is averaged in log space, so resting 2× and 0.5× the plan cancel out instead of averaging to 1.25×.
 
-**Отдых и темп** (`ml/model.py::pace`). Отношение «факт / план» считается в логарифмах и тоже стягивается к среднему по всем. Логарифм нужен потому, что отдых в 2× дольше и в 2× короче должны компенсировать друг друга, а не давать среднее 1.25×.
+**No leakage:** every feature for a session is computed only from sessions *before* it. Training and serving share one feature pipeline. The report recomputes the forecast as it looked before the workout started, so the accuracy score is honest.
 
-**Защита от утечки будущего.** Все признаки тренировки считаются только по тому, что было *до* неё (`shift(1)`). Обучение и предсказание используют одну и ту же функцию построения признаков. Отчёт `/plans/{id}/report` пересчитывает прогноз по истории *до начала* тренировки, так что точность в отчёте честная.
+**Cold start:** without a trained model, the forecast equals the plan. Training mixes in synthetic athletes, so the global model is reasonable from day one.
 
-**Холодный старт.** Без обученной модели прогноз равен плану. `/ml/train` по умолчанию добавляет синтетических атлетов (отрицательные id), чтобы глобальная модель была разумной с первого дня.
+### Evaluation (synthetic data, 60 lifters × 12 weeks, time-based split)
 
-**Рекомендация веса** (`ml/forecast.py::recommend`). Тренд e1RM считается линейной регрессией по последним 8 тренировкам. Экстраполяция не дальше 2 недель, рост не отрицательный. Дальше перебираются веса с шагом 2.5 кг, и выбирается самый тяжёлый, при котором персональная модель ждёт выполнения всех подходов.
-
-## Результаты прототипа (синтетика, 60 человек, 12 недель)
-
-| Метод | Ошибка, повторов на подход (MAE) |
+| Method | MAE, reps per set |
 |---|---|
-| «Сделаешь как в плане» | 2.00 |
-| Глобальная модель | 0.69 |
-| + персональная поправка | 0.68 |
+| "You'll do what you planned" | 2.00 |
+| Global model with profile features | 0.69 |
+| + personal bias | 0.68 |
 
-Новый пользователь, которого модель не видела при обучении:
+For a user the model has never seen, error drops from 1.70 on the first session to about 0.67 after 4 sessions. See [`packages/ml/notebooks/prototype.py`](packages/ml/notebooks/prototype.py); open it in VS Code or Jupyter (`# %%` cells).
 
-| Его тренировка | 1-я | 2–3 | 4–6 | 7+ |
-|---|---|---|---|---|
-| Ошибка плана | 1.99 | 2.12 | 1.86 | ~1.8 |
-| Ошибка модели | 1.70 | 0.96 | **0.67** | ~0.66 |
+## Development
 
-После 3–4 тренировок модель «знает» человека. Основную работу делают признаки профиля. Поправка-смещение даёт немного, потому что профиль уже закрывает большую часть индивидуальности. Скрытые черты (насколько человек затягивает отдых, темп) восстанавливаются с корреляцией 0.99.
+Requirements: Node 22, Yarn 1, Python 3.11+, PostgreSQL 16.
 
-## Ограничения и следующие шаги
+```bash
+yarn install
+pip install -e "packages/ml[dev]"
 
-- Цензурирование: если человек может сделать 12, но план 8, мы видим 8. Модель предсказывает выполнение плана, а не предел. Чтобы узнать предел, нужны подходы «до отказа» или RPE.
-- Один пользователь на устройство, без авторизации. Следующий шаг: JWT.
-- Модель переобучается вручную (кнопка в приложении). В проде нужно переобучение по расписанию и сравнение новой модели со старой на отложенной выборке.
-- Синтетика проверяет, что пайплайн умеет восстанавливать заложенные закономерности. Реальное качество покажут только реальные данные: смотри `forecast_mae_reps` vs `plan_mae_reps` в отчётах.
-# temzardo
+createdb trainiq                       # or use the db service from docker compose
+yarn migrate
+
+uvicorn trainiq_ml.app:app --port 8001 --app-dir packages/ml   # terminal 1
+yarn dev:backend                                                # terminal 2, :8000
+yarn dev:frontend                                               # terminal 3, :5173
+yarn seed                               # demo@trainiq.dev / demo123 with 6 weeks of history
+```
+
+Tests:
+
+```bash
+yarn test                              # backend (needs a trainiq_test database)
+cd packages/ml && pytest               # ML
+```
+
+## Known limitations
+
+- **Censoring.** If you can do 12 reps but planned 8, the data says 8. The model predicts completion of the plan, not your limit. RPE or AMRAP sets would fix this.
+- `/api/ml/train` retrains the shared model and is open to any signed-in user. Put it behind an admin check on a public instance.
+- Synthetic data proves the pipeline recovers known patterns. Real accuracy shows up in each workout report: compare the forecast error with the plan error.
+
+## Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md). Good first issues: RPE input, deload detection, export to CSV, a mobile app.
+
+## License
+
+[MIT](LICENSE)
